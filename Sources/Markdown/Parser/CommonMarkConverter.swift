@@ -626,6 +626,15 @@ struct MarkupParser {
         cmark_parser_attach_syntax_extension(parser, cmark_find_syntax_extension("tasklist"))
         cmark_parser_feed(parser, string, string.utf8.count)
         let rawDocument = cmark_parser_finish(parser)
+        
+        /*
+        if let cString = cmark_render_xml(rawDocument, CMARK_OPT_SOURCEPOS) {
+            let xml = String(cString: cString)
+            print(xml)
+            free(cString) // 必须释放 C 返回的字符串
+        }*/
+        
+         
         let initialState = MarkupConverterState(source: source, iterator: cmark_iter_new(rawDocument), event: CMARK_EVENT_NONE, node: nil, options: options, headerSeen: false, pendingTableBody: nil).next()
         precondition(initialState.event == CMARK_EVENT_ENTER)
         precondition(initialState.nodeType == .document)
@@ -649,5 +658,41 @@ struct MarkupParser {
                                                 metadata: MarkupMetadata(id: .newRoot(), indexInParent: 0)))
         return makeMarkup(data) as! Document
     }
+    
+    static func parseString(_ string: String, source: URL?, options: ConvertOptions) -> Document {
+        
+         cmark_gfm_core_extensions_ensure_registered()
+         let parser = cmark_parser_new(options.commonmarkOptions.rawValue)
+
+         for ext in options.commonmarkExtensions {
+             cmark_parser_attach_syntax_extension(parser, cmark_find_syntax_extension(ext))
+         }
+
+         cmark_parser_feed(parser, string, string.utf8.count)
+         let rawDocument = cmark_parser_finish(parser)
+         let initialState = MarkupConverterState(source: source, iterator: cmark_iter_new(rawDocument), event: CMARK_EVENT_NONE, node: nil, options: options.parseOptions, headerSeen: false, pendingTableBody: nil).next()
+         precondition(initialState.event == CMARK_EVENT_ENTER)
+         precondition(initialState.nodeType == .document)
+         let conversion = convertAnyElement(initialState)
+         guard case .document = conversion.result.data else {
+             fatalError("cmark top-level conversion didn't produce a RawMarkup.document")
+         }
+
+         let finalState = conversion.state.next()
+         precondition(finalState.event == CMARK_EVENT_DONE)
+         precondition(finalState.node == nil)
+         precondition(initialState.iterator == finalState.iterator)
+
+         precondition(initialState.node != nil)
+
+         cmark_node_free(initialState.node)
+         cmark_iter_free(finalState.iterator)
+         cmark_parser_free(parser)
+
+         let data = _MarkupData(AbsoluteRawMarkup(markup: conversion.result,
+                                                 metadata: MarkupMetadata(id: .newRoot(), indexInParent: 0)))
+         return makeMarkup(data) as! Document
+     }
+    
 }
 

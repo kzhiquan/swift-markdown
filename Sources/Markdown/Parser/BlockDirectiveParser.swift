@@ -700,6 +700,9 @@ private enum ParseContainer: CustomStringConvertible {
             // Ask cmark to parse it. Now we have a Markdown `Document` consisting
             // of the contents of this line run.
             let parsedSubdocument = MarkupParser.parseString(logicalText, source: lines.first?.source, options: options)
+            
+            //print("logicalText:\(logicalText)")
+            //print("parsedSubdocument:\(parsedSubdocument.debugDescription(options: .printEverything))")
 
             // Now, we'll adjust the columns of all of the source positions as
             // needed to offset that indentation trimming we did above.
@@ -767,6 +770,112 @@ private enum ParseContainer: CustomStringConvertible {
             }
         }
     }
+    
+    /// Convert this container to the corresponding ``RawMarkup`` node.
+    func convertToRawMarkup(ranges: inout RangeTracker,
+                            parent: ParseContainer?,
+                            options: ConvertOptions) -> [RawMarkup] {
+        switch self {
+        case let .root(children):
+            let rawChildren = children.flatMap {
+                $0.convertToRawMarkup(ranges: &ranges, parent: self, options: options)
+            }
+            return [.document(parsedRange: ranges.totalRange, rawChildren)]
+        case let .lineRun(lines, _):
+            // Get the maximum number of initial indentation characters to remove from the start
+            // of each of these `lines` from the first sibling under `parent` (which could be `self`).
+            let indentationColumnCount = indentationAdjustment(under: parent)
+
+            // Trim up to that number of whitespace characters off.
+            // We need to keep track of what we removed because cmark will report different source locations than what we
+            // had in the source. We'll adjust those when we get them back.
+            let trimmedIndentationAndLines = lines.map { line -> (line: TrimmedLine,
+                                                                  indentation: Int) in
+                var trimmedLine = line
+                let trimmedWhitespace = trimmedLine.lexWhitespace(maxLength: indentationColumnCount)
+                let indentation = (trimmedWhitespace?.text.count ?? 0) + line.untrimmedText.distance(from: line.untrimmedText.startIndex, to: line.parseIndex)
+                return (trimmedLine, indentation)
+            }
+
+            // Build the logical block of text that cmark will see.
+            let logicalText = trimmedIndentationAndLines
+                .map { $0.line.text }
+                .joined(separator: "\n")
+
+            // Ask cmark to parse it. Now we have a Markdown `Document` consisting
+            // of the contents of this line run.
+            let parsedSubdocument = MarkupParser.parseString(logicalText, source: lines.first?.source, options: options)
+            
+            //print("logicalText:\(logicalText)")
+            //print("parsedSubdocument:\(parsedSubdocument.debugDescription(options: .printEverything))")
+
+            // Now, we'll adjust the columns of all of the source positions as
+            // needed to offset that indentation trimming we did above.
+            // Note that the child identifiers under this document will start at
+            // 0, so we will need to adjust those as well, because child identifiers
+            // start at 0 from the `root`.
+
+            var columnAdjuster = RangeAdjuster(startLine: lines.first?.lineNumber ?? 1,
+                                               ranges: ranges,
+                                               trimmedIndentationPerLine: trimmedIndentationAndLines.map { $0.indentation })
+            for child in parsedSubdocument.children {
+                columnAdjuster.visit(child)
+            }
+
+            // Write back the adjusted ranges.
+            ranges = columnAdjuster.ranges
+
+            return parsedSubdocument.children.map { $0.raw.markup }
+        case let .blockDirective(pendingBlockDirective, children):
+            let range = pendingBlockDirective.atLocation..<pendingBlockDirective.endLocation
+            ranges.add(range)
+            let children = children.flatMap {
+                $0.convertToRawMarkup(ranges: &ranges, parent: self, options: options)
+            }
+            return [
+                .blockDirective(
+                    name: String(pendingBlockDirective.name),
+                    nameLocation: pendingBlockDirective.atLocation,
+                    argumentText: DirectiveArgumentText(segments: pendingBlockDirective.argumentsText.map {
+                        let base = $0.text.base
+                        let lineStartIndex: String.Index
+                        if let argumentRange = $0.range {
+                            // If the argument has a known source range, offset the column (number of UTF8 bytes) to find the start of the line.
+                            lineStartIndex = base.utf8.index($0.text.startIndex, offsetBy: 1 - argumentRange.lowerBound.column)
+                        } else if let newLineIndex = base[..<$0.text.startIndex].lastIndex(where: \.isNewline) {
+                            // Iterate backwards from the argument start index to find the the start of the line.
+                            lineStartIndex = base.utf8.index(after: newLineIndex)
+                        } else {
+                            lineStartIndex = base.startIndex
+                        }
+                        let parseIndex = base.utf8.index($0.text.startIndex, offsetBy: -base.utf8.distance(from: base.startIndex, to: lineStartIndex))
+                        let untrimmedLine = String(base[lineStartIndex ..< $0.text.endIndex])
+                        return DirectiveArgumentText.LineSegment(untrimmedText: untrimmedLine, parseIndex: parseIndex, range: $0.range)
+                    }),
+                    parsedRange: pendingBlockDirective.atLocation ..< pendingBlockDirective.endLocation,
+                    children
+                ),
+            ]
+        case let .doxygenCommand(pendingDoxygenCommand, lines):
+            let range = pendingDoxygenCommand.atLocation..<pendingDoxygenCommand.endLocation
+            ranges.add(range)
+            let children = ParseContainer.lineRun(lines, isInCodeFence: false)
+                .convertToRawMarkup(ranges: &ranges, parent: self, options: options)
+            switch pendingDoxygenCommand.kind {
+            case .discussion:
+                return [.doxygenDiscussion(parsedRange: range, children)]
+            case .note:
+                return [.doxygenNote(parsedRange: range, children)]
+            case .abstract:
+                return [.doxygenAbstract(parsedRange: range, children)]
+            case .param(let name):
+                return [.doxygenParam(name: String(name), parsedRange: range, children)]
+            case .returns:
+                return [.doxygenReturns(parsedRange: range, children)]
+            }
+        }
+    }
+    
 }
 
 /// A stack of *open parse containers* into which incoming lines will be added.
@@ -1153,10 +1262,41 @@ extension Document {
         let data = _MarkupData(absoluteRaw)
         self.init(data)
     }
+    
+    /// Convert a ``ParseContainer` to a ``Document``.
+    ///
+    /// - Precondition: The `rootContainer` must be the `.root` case.
+    fileprivate init(converting rootContainer: ParseContainer, from source: URL?,
+                     options: ConvertOptions) {
+        guard case .root = rootContainer else {
+            fatalError("Tried to convert a non-root container to a `Document`")
+        }
+
+        var rangeTracker = RangeTracker(totalRange: SourceLocation(line: 1, column: 1, source: source)..<SourceLocation(line: 1, column: 1, source: source))
+        let rootId = MarkupIdentifier.newRoot()
+        let result = rootContainer.convertToRawMarkup(ranges: &rangeTracker, parent: nil, options: options)
+
+        guard let rawDocument = result.first,
+              case .document = rawDocument.header.data,
+              result.count == 1 else {
+            fatalError("Conversion from ParseContainer.document to RawMarkup.document failed")
+        }
+
+        let metadata = MarkupMetadata(id: rootId, indexInParent: 0)
+        let absoluteRaw = AbsoluteRawMarkup(markup: rawDocument, metadata: metadata)
+        let data = _MarkupData(absoluteRaw)
+        self.init(data)
+    }
+    
 }
 
 struct BlockDirectiveParser {
     static func parse(_ input: URL, options: ParseOptions = []) throws -> Document {
+        let string = try String(contentsOf: input, encoding: .utf8)
+        return parse(string, source: input, options: options)
+    }
+    
+    static func parse(_ input: URL, options: ConvertOptions = .init()) throws -> Document {
         let string = try String(contentsOf: input, encoding: .utf8)
         return parse(string, source: input, options: options)
     }
@@ -1179,5 +1319,27 @@ struct BlockDirectiveParser {
         // This is where the CommonMark parser is called upon to parse runs of lines of content,
         // adjusting source locations back to the original source.
         return Document(converting: rootContainer, from: source, options: options)
+    }
+    
+
+    /// Parse the input.
+    static func parse(_ input: String, source: URL?,
+                      options: ConvertOptions = .init()) -> Document {
+        // Phase 0: Split the input into lines lazily, keeping track of
+        // line numbers, consecutive blank lines, and start positions on each line where indentation ends.
+        // These trim points may be used to adjust the indentation seen by the CommonMark parser when
+        // the need to parse regular markdown lines arises.
+        let trimmedLines = LazySplitLines(input[...], source: source)
+
+        // Phase 1: Categorize the lines into a hierarchy of block containers by parsing the prefix
+        // of the line, opening and closing block directives appropriately, and folding elements
+        // into a root document.
+        let rootContainer = ParseContainer(parsingHierarchyFrom: trimmedLines, options: options.parseOptions)
+
+        // Phase 2: Convert the hierarchy of block containers into a real ``Document``.
+        // This is where the CommonMark parser is called upon to parse runs of lines of content,
+        // adjusting source locations back to the original source.
+        return Document(converting: rootContainer, from: source, options: options)
+        
     }
 }

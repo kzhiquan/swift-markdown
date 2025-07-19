@@ -50,6 +50,22 @@ public extension Document {
         }
     }
 
+    /// Parse a string into a `Document`.
+    ///
+    /// - parameter string: the input Markdown text to parse.
+    /// - parameter options: options for parsing Markdown text, including
+    ///   Commonmark-specific options and extensions.
+    /// - parameter source: an explicit source URL from which the input `string` came for marking source locations.
+    ///   This need not be a file URL.
+    init(parsing string: String, source: URL? = nil, convertOptions options: ConvertOptions) {
+        if options.parseOptions.contains(.parseBlockDirectives) {
+            self = BlockDirectiveParser.parse(string, source: source,
+                                              options: options)
+        } else {
+            self = MarkupParser.parseString(string, source: source, options: options)
+        }
+    }
+    
     /// Parse a file's contents into a `Document`.
     ///
     /// - parameter file: a file URL from which to load Markdown text to parse.
@@ -57,6 +73,21 @@ public extension Document {
     init(parsing file: URL, options: ParseOptions = []) throws {
         let string = try String(contentsOf: file)
         if options.contains(.parseBlockDirectives) {
+            self = BlockDirectiveParser.parse(string, source: file,
+                                              options: options)
+        } else {
+            self = MarkupParser.parseString(string, source: file, options: options)
+        }
+    }
+    
+    /// Parse a file's contents into a `Document`.
+    ///
+    /// - parameter file: a file URL from which to load Markdown text to parse.
+    /// - parameter options: options for parsing Markdown text, including
+    ///   Commonmark-specific options and extensions.
+    init(parsing file: URL, convertOptions options: ConvertOptions) throws {
+        let string = try String(contentsOf: file)
+        if options.parseOptions.contains(.parseBlockDirectives) {
             self = BlockDirectiveParser.parse(string, source: file,
                                               options: options)
         } else {
