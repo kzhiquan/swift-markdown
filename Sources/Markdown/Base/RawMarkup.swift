@@ -15,7 +15,8 @@ import Foundation
 /// Some elements don't currently track any specific data and act as basic containers for their children. In some cases, there is an expectation regarding children.
 ///
 /// For example, a `Document` can't contain another `Document` and lists can only contain `ListItem`s as children. Since `RawMarkup` is a single type, these are enforced through preconditions; however, those rules are enforced as much as possible at compile time in the various `Markup` types.
-enum RawMarkupData: Equatable {
+public enum RawMarkupData: Equatable {
+    
     case blockQuote
     case codeBlock(String, language: String?)
     case customBlock
@@ -57,6 +58,13 @@ enum RawMarkupData: Equatable {
     case doxygenAbstract
     case doxygenParam(name: String)
     case doxygenReturns
+    
+    
+    //MARK: - Custom by chitaner
+    case highlight
+    case underline
+    case escapedCharacter
+    
 }
 
 extension RawMarkupData {
@@ -364,6 +372,21 @@ final class RawMarkup: ManagedBuffer<RawMarkupHeader, RawMarkup> {
     static func doxygenReturns(parsedRange: SourceRange?, _ children: [RawMarkup]) -> RawMarkup {
         return .create(data: .doxygenReturns, parsedRange: parsedRange, children: children)
     }
+    
+    
+    // MARK: Custom
+    static func highlight(parsedRange: SourceRange?, _ children: [RawMarkup]) -> RawMarkup {
+        return .create(data: .highlight, parsedRange: parsedRange, children: children)
+    }
+    
+    static func underline(parsedRange: SourceRange?, _ children: [RawMarkup]) -> RawMarkup {
+        return .create(data: .underline, parsedRange: parsedRange, children: children)
+    }
+    
+    static func escapedCharacter(parsedRange: SourceRange?, _ children: [RawMarkup]) -> RawMarkup {
+        return .create(data: .escapedCharacter, parsedRange: parsedRange, children: children)
+    }
+    
 }
 
 fileprivate extension Sequence where Element == RawMarkup {

@@ -81,7 +81,16 @@ func makeMarkup(_ data: _MarkupData) -> Markup {
         return DoxygenParameter(data)
     case .doxygenReturns:
         return DoxygenReturns(data)
+        
+    //MARK: - Custom
+    case .highlight:
+        return Highlight(data)
+    case .underline:
+        return Underline(data)
+    case .escapedCharacter:
+        return EscapedCharacter(data)
     }
+    
 }
 
 /// A markup element.
