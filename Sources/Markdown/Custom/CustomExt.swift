@@ -34,6 +34,23 @@ extension Text {
     
 }
 
+extension SoftBreak {
+    
+    public init(range: SourceRange?) {
+        try! self.init(.softBreak(parsedRange: range))
+    }
+    
+}
+
+
+extension InlineCode {
+    
+    public init(_ code: String, range: SourceRange?) {
+        try! self.init(.inlineCode(parsedRange: range, code: code))
+    }
+    
+}
+
 
 extension Strong {
     
@@ -62,23 +79,6 @@ extension Strikethrough {
     
 }
 
-extension Paragraph {
-    
-    public init(_ newChildren: some Sequence<InlineMarkup>, range: SourceRange?) {
-        let rawChildren = newChildren.map { $0.raw.markup }
-        try! self.init(.paragraph(parsedRange: range, rawChildren))
-    }
-    
-}
-
-extension Heading {
-    
-    public init<Children: Sequence>(level: Int, _ children: Children, range: SourceRange?) where Children.Element == InlineMarkup {
-        try! self.init(.heading(level: level, parsedRange: range, children.map { $0.raw.markup }))
-    }
-    
-}
-
 extension Link {
     
     public init<Children: Sequence>(destination: String? = nil, title: String? = nil, _ children: Children, range: SourceRange?) where Children.Element == RecurringInlineMarkup {
@@ -100,3 +100,52 @@ extension Link {
     }
     
 }
+
+extension Paragraph {
+    
+    public init(_ newChildren: some Sequence<InlineMarkup>, range: SourceRange?) {
+        let rawChildren = newChildren.map { $0.raw.markup }
+        try! self.init(.paragraph(parsedRange: range, rawChildren))
+    }
+    
+}
+
+extension Heading {
+    
+    public init<Children: Sequence>(level: Int, _ children: Children, range: SourceRange?) where Children.Element == InlineMarkup {
+        try! self.init(.heading(level: level, parsedRange: range, children.map { $0.raw.markup }))
+    }
+    
+}
+
+
+
+extension ListItem {
+    
+    public init<Children: Sequence>(checkbox: Checkbox? = .none, _ children: Children, range: SourceRange?) where Children.Element == BlockMarkup {
+        try! self.init(.listItem(checkbox: checkbox, parsedRange: range, children.map { $0.raw.markup }))
+    }
+    
+}
+
+extension BlockQuote {
+    
+    public init(_ newChildren: some Sequence<BlockMarkup>, range: SourceRange?) {
+        let rawChildren = newChildren.map { $0.raw.markup }
+        try! self.init(.blockQuote(parsedRange: range, rawChildren))
+    }
+    
+}
+
+
+extension Document {
+    
+    public init(_ children: some Sequence<BlockMarkup>, range: SourceRange?) {
+        let rawChildren = children.map { $0.raw.markup }
+        try! self.init(.document(parsedRange: range, rawChildren))
+    }
+    
+}
+    
+    
+
