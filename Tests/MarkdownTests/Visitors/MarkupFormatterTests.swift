@@ -1569,6 +1569,61 @@ class MarkupFormatterTableTests: XCTestCase {
         let reparsed = Document(parsing: formatted)
         XCTAssertTrue(document.hasSameStructure(as: reparsed))
     }
+    
+    func testColSpanOverflowTooManyIndicators() {
+        let source = """
+        | Jenis Kelamin | Jenis Tas     | Tally       | Jumlah |
+        |---------------|---------------|-------------|--------|
+        | Perempuan     | Tas Ransel    | ||||
+        """
+        let document = Document(parsing: source)
+        let formatted = document.format()
+        let expected = """
+        |Jenis Kelamin|Jenis Tas |Tally|Jumlah|
+        |-------------|----------|-----|------|
+        |Perempuan    |Tas Ransel|           ||
+        """
+        XCTAssertEqual(expected, formatted)
+    }
+    
+    func testColSpanOverflowMisformatted() {
+        let source = """
+        |A|B|C|
+        |-|-|-|
+        |1|2|3||4|5|6|
+        """
+        let document = Document(parsing: source)
+        let formatted = document.format()
+        let expected = """
+        |A|B|C|
+        |-|-|-|
+        |1|2|3|
+        """
+        XCTAssertEqual(expected, formatted)
+    }
+    
+    func testColSpanOverflowInHeader() {
+        // Doesn't get parsed as a table, so doesn't exhibit the crash
+        let source = """
+        |A|B|C||-|-|-|
+        |1|2|3|
+        """
+        let document = Document(parsing: source)
+        let formatted = document.format()
+        XCTAssertEqual(source, formatted)
+    }
+    
+    func testColSpanOverflowInSubHeader() {
+        // Doesn't get parsed as a table, so doesn't exhibit the crash
+        let source = """
+        |A|B|C|
+        |-|-|-||
+        |1|2|3|
+        """
+        let document = Document(parsing: source)
+        let formatted = document.format()
+        XCTAssertEqual(source, formatted)
+    }
 }
 
 class MarkupFormatterMixedContentTests: XCTestCase {
@@ -1625,5 +1680,59 @@ class MarkupFormatterMixedContentTests: XCTestCase {
             ).format(),
         ]
         zip(expected, printed).forEach { XCTAssertEqual($0, $1) }
+    }
+
+    func testDoxygenCommandsPrecedingNewlinesWithSingleNewline() {
+        let expected = #"""
+            Does something.
+
+            \abstract abstract
+            \param x first param
+            \returns result
+            \note note
+            \discussion discussion
+            """#
+
+        let formattingOptions = MarkupFormatter.Options(
+            adjacentDoxygenCommandsSpacing: .singleNewline)
+        let printed = Document(
+            Paragraph(Text("Does something.")),
+            DoxygenAbstract(children: Paragraph(Text("abstract"))),
+            DoxygenParameter(name: "x", children: Paragraph(Text("first param"))),
+            DoxygenReturns(children: Paragraph(Text("result"))),
+            DoxygenNote(children: Paragraph(Text("note"))),
+            DoxygenDiscussion(children: Paragraph(Text("discussion")))
+        ).format(options: formattingOptions)
+
+        XCTAssertEqual(expected, printed)
+    }
+
+    func testDoxygenCommandsPrecedingNewlinesAsSeparateParagraphs() {
+        let expected = #"""
+            Does something.
+
+            \abstract abstract
+
+            \param x first param
+
+            \returns result
+
+            \note note
+
+            \discussion discussion
+            """#
+
+        let formattingOptions = MarkupFormatter.Options(
+            adjacentDoxygenCommandsSpacing: .separateParagraphs)
+        let printed = Document(
+            Paragraph(Text("Does something.")),
+            DoxygenAbstract(children: Paragraph(Text("abstract"))),
+            DoxygenParameter(name: "x", children: Paragraph(Text("first param"))),
+            DoxygenReturns(children: Paragraph(Text("result"))),
+            DoxygenNote(children: Paragraph(Text("note"))),
+            DoxygenDiscussion(children: Paragraph(Text("discussion")))
+        ).format(options: formattingOptions)
+
+        XCTAssertEqual(expected, printed)
     }
 }
