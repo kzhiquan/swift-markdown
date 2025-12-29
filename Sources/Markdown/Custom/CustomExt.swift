@@ -128,6 +128,22 @@ extension ListItem {
     
 }
 
+extension OrderedList {
+    
+    public init<Items: Sequence>(_ items: Items, range: SourceRange?) where Items.Element == ListItem {
+        try! self.init(.orderedList(parsedRange: range, items.map { $0.raw.markup }))
+    }
+    
+}
+
+extension UnorderedList {
+    
+    public init<Items: Sequence>(_ items: Items, range: SourceRange?) where Items.Element == ListItem {
+        try! self.init(.unorderedList(parsedRange: range, items.map { $0.raw.markup }))
+    }
+    
+}
+
 extension BlockQuote {
     
     public init(_ newChildren: some Sequence<BlockMarkup>, range: SourceRange?) {
