@@ -101,6 +101,36 @@ extension Link {
     
 }
 
+extension Image {
+
+    /// 重建 Image 时保留解析器给出的源码范围。
+    /// Menote 在提升 inline 子树时只迁移位置，不应丢失图片地址、标题、alt 子节点或 range。
+    public init<Children: Sequence>(source: String? = nil, title: String? = nil, _ children: Children, range: SourceRange?) where Children.Element == RecurringInlineMarkup {
+        let sourceToUse: String?
+        if let source, source.isEmpty {
+            sourceToUse = nil
+        } else {
+            sourceToUse = source
+        }
+        let titleToUse: String?
+        if let title, title.isEmpty {
+            titleToUse = nil
+        } else {
+            titleToUse = title
+        }
+
+        try! self.init(
+            .image(
+                source: sourceToUse,
+                title: titleToUse,
+                parsedRange: range,
+                children.map { $0.raw.markup }
+            )
+        )
+    }
+
+}
+
 extension Paragraph {
     
     public init(_ newChildren: some Sequence<InlineMarkup>, range: SourceRange?) {

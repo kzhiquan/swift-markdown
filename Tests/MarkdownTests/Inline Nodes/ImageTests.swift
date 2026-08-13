@@ -51,4 +51,23 @@ class ImageTests: XCTestCase {
             """
         XCTAssertEqual(expectedDump, image.debugDescription())
     }
+
+    /// Rebuilding an image during source normalization must preserve its metadata, children, and parsed range.
+    func testImageFromSequenceWithRange() throws {
+        let range: SourceRange = SourceLocation(line: 2, column: 1, source: nil)..<SourceLocation(line: 2, column: 35, source: nil)
+        let childRange: SourceRange = SourceLocation(line: 2, column: 3, source: nil)..<SourceLocation(line: 2, column: 6, source: nil)
+        let image = Image(
+            source: "image.png",
+            title: "title",
+            [Text("alt", range: childRange)],
+            range: range
+        )
+
+        XCTAssertEqual(image.source, "image.png")
+        XCTAssertEqual(image.title, "title")
+        XCTAssertEqual(image.range, range)
+        let altText = try XCTUnwrap(image.child(at: 0) as? Text)
+        XCTAssertEqual(altText.string, "alt")
+        XCTAssertEqual(altText.range, childRange)
+    }
 }
