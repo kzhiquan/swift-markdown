@@ -34,6 +34,14 @@ extension Text {
     
 }
 
+extension InlineHTML {
+
+    public init(_ literalText: String, range: SourceRange?) {
+        try! self.init(.inlineHTML(parsedRange: range, html: literalText))
+    }
+
+}
+
 extension SoftBreak {
     
     public init(range: SourceRange?) {
@@ -131,6 +139,15 @@ extension Image {
 
 }
 
+extension CodeBlock {
+
+    /// 重建 CodeBlock 时同时保留语义 payload 与已验证的源码范围。
+    public init(language: String? = nil, code: String, range: SourceRange?) {
+        try! self.init(.codeBlock(parsedRange: range, code: code, language: language))
+    }
+
+}
+
 extension Paragraph {
     
     public init(_ newChildren: some Sequence<InlineMarkup>, range: SourceRange?) {
@@ -163,6 +180,25 @@ extension OrderedList {
     public init<Items: Sequence>(_ items: Items, range: SourceRange?) where Items.Element == ListItem {
         try! self.init(.orderedList(parsedRange: range, items.map { $0.raw.markup }))
     }
+
+    /// 职责：在更新有序列表起始号时保留当前节点的 parsed range，避免 range 被清空。
+    /// 背景：默认 `startIndex` setter 会把 parsedRange 置为 nil，影响依赖 range 的下游逻辑。
+    /// 处理逻辑：
+    /// 1) 读取当前 raw children 与 parsedRange；
+    /// 2) 仅替换 ordered list 的 startIndex；
+    /// 3) 通过 replacingSelf 回写节点，保持 children 与 range 不变。
+    public mutating func setStartIndexPreservingRange(_ newValue: UInt) {
+        guard case let .orderedList(current) = self._data.raw.markup.data else { return }
+        guard current != newValue else { return }
+        let preservedRange = self.range
+        self._data = self._data.replacingSelf(
+            .orderedList(
+                parsedRange: preservedRange,
+                self._data.raw.markup.copyChildren(),
+                startIndex: newValue
+            )
+        )
+    }
     
 }
 
@@ -183,6 +219,12 @@ extension BlockQuote {
     
 }
 
+extension ThematicBreak {
+    public init(range: SourceRange?) {
+        try! self.init(.thematicBreak(parsedRange: range))
+    }
+}
+
 
 extension Document {
     
@@ -194,4 +236,3 @@ extension Document {
 }
     
     
-

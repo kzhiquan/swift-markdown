@@ -45,4 +45,20 @@ class CodeBlockTests: XCTestCase {
         XCTAssertEqual(codeBlock.language, newCodeBlock.language)
         XCTAssertFalse(codeBlock.isIdentical(to: newCodeBlock))
     }
+
+    /// Rebuilding a code block during source normalization must preserve its payload and parsed range.
+    func testCodeBlockWithRange() {
+        let range: SourceRange = SourceLocation(line: 2, column: 3, source: nil)
+            ..< SourceLocation(line: 4, column: 1, source: nil)
+        let codeBlock = CodeBlock(
+            language: "swift",
+            code: "let value = 1\n\n",
+            range: range
+        )
+
+        XCTAssertEqual(codeBlock.language, "swift")
+        XCTAssertEqual(codeBlock.code, "let value = 1\n\n")
+        XCTAssertEqual(codeBlock.range, range)
+        XCTAssertEqual(codeBlock.childCount, 0)
+    }
 }
